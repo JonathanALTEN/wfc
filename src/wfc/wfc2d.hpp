@@ -6,6 +6,9 @@
 #include <bitset>
 #include <array>
 #include <random>
+#include <limits>
+#include <queue>
+#include <stack>
 
 namespace wfc2d {
 
@@ -22,16 +25,17 @@ namespace wfc2d {
             enum class EDirections { Up, Down, Left, Right };
 
         public:
-            static constexpr size_t BITSET_SIZE = 8;
+            static constexpr size_t BITSET_SIZE = 8; // 255 possible tiles.
             
             // Public typedefs for user convenience
-            using TileOptions = std::array<std::bitset<BITSET_SIZE>, 4>;
             using CallbackFn = std::function<void()>; /**< Type for callback function. */
             
+            static constexpr size_t NUM_OPTION_DIRECTIONS = 4;
+
             struct Tile {
-                TileOptions options;
+                std::bitset<BITSET_SIZE> options[NUM_OPTION_DIRECTIONS]; // up, down, left, right
                 size_t entropy;
-                bool collapsed;
+                bool collapsed{false};
             };
 
             /**
@@ -99,8 +103,15 @@ namespace wfc2d {
             void initialize(size_t rows, size_t cols) {
                 assert(rows * cols > 0);
 
-                this->m_outputGrid.resize(rows * cols);
-                this->m_waveGrid.resize(rows * cols);
+                this->m_wave.resize(rows * cols);
+
+                // Initialize wave grid with maximum entropy
+                for (auto& tile : this->m_wave) {
+                    tile.entropy = m_ruleset.size();
+                }
+
+                this->m_output.resize(rows * cols);
+                std::fill(this->m_output.begin(), this->m_output.end(), std::numeric_limits<std::size_t>::max());
 
                 this->m_gridWidth = cols;
                 this->m_gridHeight = rows;
@@ -109,55 +120,56 @@ namespace wfc2d {
             }
 
             std::vector<Tile> parseRulesFromFile(const std::string& filepath) {
-    std::ifstream inputFile(filepath);
-    if (!inputFile.is_open()) {
-        std::cerr << "Error: Unable to open file.\n";
-        return {};
-    }
-
-    std::vector<Tile> tiles;
-    std::string line;
-    while (std::getline(inputFile, line)) {
-        std::istringstream iss(line);
-        std::string key, value;
-        if (line.find("[TILE_") != std::string::npos) {
-            std::cout << "New tile detected: " << line << std::endl;
-            // Extract tile ID from the line
-            Tile currentTile;
-            while (std::getline(inputFile, line)) {
-                if (line.empty() || line[0] == '[') {
-                    // If the line is empty or starts with '[', it's the beginning of a new tile
-                    break;
+                std::ifstream inputFile(filepath);
+                if (!inputFile.is_open()) {
+                    std::cerr << "Error: Unable to open file.\n";
+                    return {};
                 }
-                std::istringstream iss(line);
-                if (std::getline(iss, key, '=') && std::getline(iss, value)) {
-                    // Parse option and update currentTile
-                    auto parseOption = [&currentTile](const std::string& key, const std::string& value) {
-                        if (key.find(key) != std::string::npos) {
-                            std::istringstream vss(value);
-                            size_t optionTileID;
-                            size_t index = 0;
-                            if(key == "up") index = 0;
-                            if(key == "down") index = 1;
-                            if(key == "left") index = 2;
-                            if(key == "right") index = 3;
 
-                            while (vss >> optionTileID) {
-                                currentTile.options[index].set(optionTileID);
+                std::string line;
+                while (std::getline(inputFile, line)) {
+                    std::istringstream iss(line);
+                    std::string key, value;
+                    if (line.find("[TILE_") != std::string::npos) {
+                        // Extract tile ID from the line
+                        Tile currentTile;
+                        while (std::getline(inputFile, line)) {
+                            if (line.empty() || line[0] == '[') {
+                                // If the line is empty or starts with '[', it's the beginning of a new tile
+                                break;
                             }
+
+                            std::istringstream iss(line);
+                            if (!(std::getline(iss, key, '=') && std::getline(iss, value))) {
+                                std::cerr << "Error: Failed to parse line: " << line << std::endl;
+                                continue; // Skip to the next line
+                            }
+
+                            // Parse option and update currentTile
+                            auto parseOption = [&currentTile](const std::string& key, const std::string& value) {
+                                size_t index = 0;
+                                if(key == "up") index = 0;
+                                else if(key == "down") index = 1;
+                                else if(key == "left") index = 2;
+                                else if(key == "right") index = 3;
+
+                                std::istringstream vss(value);
+                                size_t optionTileID;
+                                while (vss >> optionTileID) {
+                                    currentTile.options[index].set(optionTileID, true);
+                                }
+                            };
+                                                    
+                            parseOption(key, value);
+                            
                         }
-                    };
-                    
-                    parseOption(key, value);
+
+                        this->m_ruleset.push_back(currentTile);
+                    }
                 }
+
+                return this->m_ruleset;
             }
-            tiles.push_back(currentTile);
-        }
-    }
-
-    return tiles;
-}
-
 
             /**
              * @brief Runs the Wave Function Collapse algorithm.
@@ -170,18 +182,42 @@ namespace wfc2d {
 
                 // Algorithm logic here...
 
-                // Seed random number generator
-                std::random_device rd;
-                std::default_random_engine generator(rd());
+                // Choose a random index from the wave grid
+                const size_t initialTileIndex = random(0, m_wave.size() - 1);
+                
+                // Choose a random direction
+                const size_t randomDirectionIndex = random(0, NUM_OPTION_DIRECTIONS - 1);
 
-                // Choose a random index from the output grid
-                std::uniform_int_distribution<size_t> distribution(0, m_outputGrid.size() - 1);
-                size_t randomIndex = distribution(generator);
+                // Get the number of options available for the selected direction
+                const size_t numOptions = m_wave[initialTileIndex].options[randomDirectionIndex].count();
 
-                // Main loop: iterate over each cell in the output grid
-                for (size_t i = 0; i < this->m_outputGrid.size(); ++i) {
-                    
-                }
+                // Generate a random index within the range of available options
+                const size_t randomOptionIndex = random(0, numOptions - 1);
+
+            }
+
+            /**
+             * @brief Applies the superposition principle.
+             * 
+             * This method applies the superposition principle in the Wave Function Collapse algorithm.
+             */
+            void propagate() { 
+
+            }
+
+            /**
+             * @brief Collapses the wave function.
+             * 
+             * This method collapses the wave function in the Wave Function Collapse algorithm.
+             * 
+             * @return True if the wave function collapse is successful, false otherwise.
+             */
+
+            bool collapse(size_t index) { 
+
+                
+
+                return true; 
             }
 
             /**
@@ -189,6 +225,7 @@ namespace wfc2d {
              * 
              * @return True if initialized, false otherwise.
              */
+
             bool isInitialized() const {
                 return this->m_initialized;
             }
@@ -199,7 +236,7 @@ namespace wfc2d {
              * @return Size of the output grid.
              */
             size_t size() const {
-                return this->m_outputGrid.size();
+                return this->m_output.size();
             }
 
             /**
@@ -210,7 +247,7 @@ namespace wfc2d {
              * @throws std::out_of_range if index is out of range.
              */
             const size_t& at(size_t index) const {
-                return this->m_outputGrid.at(index);
+                return this->m_output.at(index);
             }
 
             /**
@@ -221,7 +258,7 @@ namespace wfc2d {
              * @warning No bounds checking is performed. Accessing an out-of-range index leads to undefined behavior.
              */
             const size_t& operator[](size_t index) const {
-                return this->m_outputGrid[index];
+                return this->m_output[index];
             }
 
             /**
@@ -230,7 +267,7 @@ namespace wfc2d {
              * @return Iterator to the beginning of the output grid.
              */
             iterator begin() {
-                return iterator(this->m_outputGrid, 0);
+                return iterator(this->m_output, 0);
             }
 
             /**
@@ -239,24 +276,18 @@ namespace wfc2d {
              * @return Iterator to the end of the output grid.
              */
             iterator end() {
-                return iterator(this->m_outputGrid, this->m_outputGrid.size());
+                return iterator(this->m_output, this->m_output.size());
             }
 
-            /**
-             * @brief Applies the superposition principle.
-             * 
-             * This method applies the superposition principle in the Wave Function Collapse algorithm.
-             */
-            void propagate() { }
-
-            /**
-             * @brief Collapses the wave function.
-             * 
-             * This method collapses the wave function in the Wave Function Collapse algorithm.
-             * 
-             * @return True if the wave function collapse is successful, false otherwise.
-             */
-            bool collapse() { return true; }
+            void print() const {
+                for (size_t row = 0; row < m_gridHeight; ++row) {
+                    for (size_t col = 0; col < m_gridWidth; ++col) {
+                        size_t index = row * m_gridWidth + col;
+                        std::cout << m_output[index] << " ";
+                    }
+                    std::cout << std::endl;
+                }
+            }
 
             /**
              * @brief Gets the neighboring indices of a given cell.
@@ -298,13 +329,21 @@ namespace wfc2d {
                 return neighboringIndices;
             }
 
+            // Utility function to generate a random index from the output grid
+            size_t random(int min, int max) const {
+                std::random_device rd;
+                std::default_random_engine generator(rd());
+                std::uniform_int_distribution<size_t> distribution(min, max); 
+                return distribution(generator);
+            }
+
         private:
             size_t m_gridWidth{ 0 };
             size_t m_gridHeight{ 0 };
 
-            std::vector<size_t> m_outputGrid; /**< Output grid containing the collapsed patterns. */
-            std::vector<Tile> m_waveGrid;
-
+            std::vector<Tile> m_wave;
+            std::vector<size_t> m_output;
+            std::vector<Tile> m_ruleset;
             bool m_initialized{ false }; /**< Flag indicating whether the algorithm is initialized. */
         };
 

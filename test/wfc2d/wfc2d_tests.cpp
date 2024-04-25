@@ -65,8 +65,6 @@ TEST(WFC2DTest, ColumnsTest) {
 
         EXPECT_EQ(calculatedCols, COLS);
     }
-
-    wfc2d.run();
 }
 
 // Test case to check the correctness of getNeighboringIndices method
@@ -108,21 +106,121 @@ TEST(WFC2DTest, ParsesTileOptionsCorrectly) {
 
     wfc2d.initialize(ROWS, COLS);
 
+    // Define expected tile options for each direction
+    const std::vector<std::vector<std::vector<size_t>>> EXPECTED_TILES_OPTIONS = 
+    {
+        // TILE_0
+        {
+            {0, 1, 2, 3},   // up 
+            {0, 1, 2, 3},   // down
+            {0, 1, 2, 3},   // left
+            {0, 1, 2, 3}    // right
+        },
+        // TILE_1
+        {
+            {0},   // up 
+            {0},   // down
+            {0, 1, 2, 3},   // left
+            {0, 1, 2, 3}    // right
+        },
+        // TILE_2
+        {
+            {0, 2, 3},   // up 
+            {0, 2, 3},   // down
+            {0, 1, 3},   // left
+            {0}    // right
+        },
+        // TILE_3
+        {
+            {0, 1, 2, 3},   // up 
+            {0, 1, 2, 3},   // down
+            {0, 1, 2, 3},   // left
+            {0, 1, 2, 3}    // right
+        },
+    };
+
     // Call the parseRulesFromFile function with the test file path
     std::string testFilePath = "test_tile_options.txt";
     const auto tiles = wfc2d.parseRulesFromFile(testFilePath);
-
-    int counter = 0;
-    for (const auto &tile : tiles) {
-        std::cout << "[TILE_" << (counter++) << "]\n";
-        for (size_t i = 0; i < 4; ++i) {
-            std::cout << "Direction " << i << ": " << tile.options[i].to_string() << std::endl;
-        }
-        std::cout << std::endl;
-    }
-
     
+    wfc2d.run();
+
+    // Assert that the number of parsed tiles is correct
+    ASSERT_EQ(tiles.size(), EXPECTED_TILES_OPTIONS.size());
+
+    // Assert that each parsed tile's options match the expected options
+    for (size_t i = 0; i < tiles.size(); ++i) 
+    {
+        const auto& tile = tiles[i];
+        for (size_t direction = 0; direction < 4; ++direction) 
+        {
+            const auto& expectedTileOptions = EXPECTED_TILES_OPTIONS[i][direction];
+            const auto& actualTileOptions = tile.options[direction];
+
+            // Compare actual options against expected options
+            ASSERT_EQ(actualTileOptions.count(), expectedTileOptions.size()) << "Number of options does not match for TILE_" << i << " and direction " << direction;
+            for (size_t option = 0; option < actualTileOptions.size(); ++option) {
+                ASSERT_EQ(actualTileOptions.test(option), std::find(expectedTileOptions.begin(), expectedTileOptions.end(), option) != expectedTileOptions.end()) << "Option " << option << " of TILE_" << i << " and direction " << direction << " does not match the expected options.";
+            }
+        }
+    }
 }
+
+TEST(WFC2DTest, PrintDataTest) {
+    wfc2d::WaveFunctionCollapse2D wfc2d;
+
+    const int ROWS = 3;
+    const int COLS = 3;
+
+    wfc2d.initialize(ROWS, COLS);
+
+    wfc2d.print();
+
+    std::cout << std::endl;
+
+    // Define expected tile options for each direction
+    const std::vector<std::vector<std::vector<size_t>>> EXPECTED_TILES_OPTIONS = 
+    {
+        // TILE_0
+        {
+            {0, 1, 2, 3},   // up 
+            {0, 1, 2, 3},   // down
+            {0, 1, 2, 3},   // left
+            {0, 1, 2, 3}    // right
+        },
+        // TILE_1
+        {
+            {0},   // up 
+            {0},   // down
+            {0, 1, 2, 3},   // left
+            {0, 1, 2, 3}    // right
+        },
+        // TILE_2
+        {
+            {0, 2, 3},   // up 
+            {0, 2, 3},   // down
+            {0, 1, 3},   // left
+            {0}    // right
+        },
+        // TILE_3
+        {
+            {0, 1, 2, 3},   // up 
+            {0, 1, 2, 3},   // down
+            {0, 1, 2, 3},   // left
+            {0, 1, 2, 3}    // right
+        },
+    };
+
+    // Call the parseRulesFromFile function with the test file path
+    std::string testFilePath = "test_tile_options.txt";
+    const auto tiles = wfc2d.parseRulesFromFile(testFilePath);
+    
+    wfc2d.run();
+
+    // Print the grid
+    wfc2d.print();
+}
+
 
 int main(int argc, char **argv) {
     ::testing::InitGoogleTest(&argc, argv);
