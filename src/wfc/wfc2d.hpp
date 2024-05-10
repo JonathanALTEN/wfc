@@ -25,15 +25,14 @@ namespace wfc2d {
             enum class EDirections { Up, Down, Left, Right };
 
         public:
-            static constexpr size_t BITSET_SIZE = 8; // 255 possible tiles.
-            
-            // Public typedefs for user convenience
-            using CallbackFn = std::function<void()>; /**< Type for callback function. */
-            
-            static constexpr size_t NUM_OPTION_DIRECTIONS = 4;
+            static constexpr size_t NUM_OPTION_DIRECTIONS = 4; // up, down, left, right
 
+            static constexpr size_t BITSET_SIZE = 8; // Example size for options bitset
+            
+            using CallbackFn = std::function<void()>;
+            
             struct Tile {
-                std::bitset<BITSET_SIZE> options[NUM_OPTION_DIRECTIONS]; // up, down, left, right
+                std::bitset<BITSET_SIZE> options[NUM_OPTION_DIRECTIONS];
                 size_t entropy;
                 bool collapsed{false};
             };
@@ -107,7 +106,12 @@ namespace wfc2d {
 
                 // Initialize wave grid with maximum entropy
                 for (auto& tile : this->m_wave) {
+                    for (auto& option : tile.options) {
+                        option.set();
+                    }
+
                     tile.entropy = m_ruleset.size();
+                    tile.collapsed = false;
                 }
 
                 this->m_output.resize(rows * cols);
@@ -168,6 +172,8 @@ namespace wfc2d {
                     }
                 }
 
+                inputFile.close();
+
                 return this->m_ruleset;
             }
 
@@ -182,27 +188,26 @@ namespace wfc2d {
 
                 // Algorithm logic here...
 
-                // Choose a random index from the wave grid
-                const size_t initialTileIndex = random(0, m_wave.size() - 1);
-                
-                // Choose a random direction
-                const size_t randomDirectionIndex = random(0, NUM_OPTION_DIRECTIONS - 1);
+                // Choose a random tile index
+                size_t randomTileIndex = random(0, m_wave.size() - 1);
 
-                // Get the number of options available for the selected direction
-                const size_t numOptions = m_wave[initialTileIndex].options[randomDirectionIndex].count();
+                // Choose a random direction index
+                size_t randomDirectionIndex = random(0, NUM_OPTION_DIRECTIONS - 1);
 
-                // Generate a random index within the range of available options
-                const size_t randomOptionIndex = random(0, numOptions - 1);
+                // Choose a random option index
+                size_t randomOptionIndex = random(0, BITSET_SIZE - 1);
 
-            }
+                // Set the random option for the random direction of the random tile
+                m_wave[randomTileIndex].options[randomDirectionIndex].set(randomOptionIndex);
 
-            /**
-             * @brief Applies the superposition principle.
-             * 
-             * This method applies the superposition principle in the Wave Function Collapse algorithm.
-             */
-            void propagate() { 
+                // Print the chosen random option
+                std::cout << "Chosen random option for Tile " << randomTileIndex
+                        << ", Direction " << randomDirectionIndex
+                        << ": " << randomOptionIndex << std::endl;   
 
+                m_output[randomTileIndex] = randomOptionIndex;
+
+                collapse(randomTileIndex);
             }
 
             /**
@@ -212,12 +217,31 @@ namespace wfc2d {
              * 
              * @return True if the wave function collapse is successful, false otherwise.
              */
-
             bool collapse(size_t index) { 
+                if (m_wave[index].collapsed) {
+                    return true;
+                }
 
+                m_wave[index].collapsed = true;
                 
-
                 return true; 
+            }
+
+            /**
+             * @brief Applies the superposition principle.
+             * 
+             * This method applies the superposition principle in the Wave Function Collapse algorithm.
+             */
+            void propagate() { 
+                for (size_t index = 0; index < m_wave.size(); ++index) {
+                    size_t row = index / this->m_gridWidth;
+                    size_t col = index % this->m_gridWidth;
+
+                    auto neighbors = getNeighboringIndices(index);
+                    for (auto neighborIndex : neighbors) {
+                        // Propagate logic here...
+                    }
+                }
             }
 
             /**
@@ -329,7 +353,7 @@ namespace wfc2d {
                 return neighboringIndices;
             }
 
-            // Utility function to generate a random index from the output grid
+            // Utility function to generate a random integer
             size_t random(int min, int max) const {
                 std::random_device rd;
                 std::default_random_engine generator(rd());
